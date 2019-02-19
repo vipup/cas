@@ -38,4 +38,6 @@ public class LdapPrincipalAttributesProperties extends AbstractLdapSearchPropert
      * use for virtual renames.
      */
     private Map<String, String> attributes = new HashMap();
+
+    private String id;
 }

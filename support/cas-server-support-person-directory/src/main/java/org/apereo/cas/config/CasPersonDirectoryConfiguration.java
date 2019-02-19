@@ -1,9 +1,16 @@
 package org.apereo.cas.config;
 
+import lombok.SneakyThrows;
 import org.apereo.cas.authentication.CoreAuthenticationUtils;
 import org.apereo.cas.authentication.principal.resolvers.InternalGroovyScriptDao;
 import org.apereo.cas.configuration.CasConfigurationProperties;
+import org.apereo.cas.configuration.model.core.authentication.GroovyPrincipalAttributesProperties;
+import org.apereo.cas.configuration.model.core.authentication.GrouperPrincipalAttributesProperties;
 import org.apereo.cas.configuration.model.core.authentication.JdbcPrincipalAttributesProperties;
+import org.apereo.cas.configuration.model.core.authentication.JsonPrincipalAttributesProperties;
+import org.apereo.cas.configuration.model.core.authentication.LdapPrincipalAttributesProperties;
+import org.apereo.cas.configuration.model.core.authentication.RestPrincipalAttributesProperties;
+import org.apereo.cas.configuration.model.core.authentication.ScriptedPrincipalAttributesProperties;
 import org.apereo.cas.configuration.support.Beans;
 import org.apereo.cas.configuration.support.JpaBeans;
 import org.apereo.cas.persondir.DefaultPersonDirectoryAttributeRepositoryPlan;
@@ -41,13 +48,19 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.OrderComparator;
 import org.springframework.http.HttpMethod;
+import org.springframework.lang.NonNull;
 
 import javax.naming.directory.SearchControls;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 
 /**
  * This is {@link CasPersonDirectoryConfiguration}.
@@ -101,40 +114,63 @@ public class CasPersonDirectoryConfiguration implements PersonDirectoryAttribute
         return cachingAttributeRepository();
     }
 
+    @ConditionalOnMissingBean(name = "deferredAttributeResolvers")
+    @Bean
+    @RefreshScope
+    public Map<String, IPersonAttributeDao> deferredAttributeResolvers() {
+        val map = new HashMap<String, IPersonAttributeDao>();
+        val resolvers = casProperties.getAuthn().getDeferredAttributeResolvers();
+        map.putAll(resolvers.getGroovy().stream()
+                .collect(toMap(e -> e.getId(), e -> groovyAttributeDao(e))));
+       // map.putAll(resolvers.getJdbc().stream()
+       //         .collect(toMap(e -> e.getgetKey(), e -> jdbcAttributeDao(e.getValue()))));
+        map.putAll(resolvers.getLdap().stream()
+                .collect(toMap(e -> e.getId(), e -> ldapAttributeDao(e))));
+        //map.putAll(resolvers.getRest().entrySet().stream()
+        //        .collect(toMap(e -> e.getKey(), e -> restfulAttributeDao(e.getValue()))));
+        //map.putAll(resolvers.getScript().entrySet().stream()
+        //        .collect(toMap(e -> e.getKey(), e -> scriptedAttributeDao(e.getValue()))));
+        //map.putAll(resolvers.getJson().entrySet().stream()
+        //        .collect(toMap(e -> e.getKey(), e -> jsonAttributeDao(e.getValue()))));
+        return map;
+    }
+
     @ConditionalOnMissingBean(name = "jsonAttributeRepositories")
     @Bean
     @RefreshScope
     public List<IPersonAttributeDao> jsonAttributeRepositories() {
-        val list = new ArrayList<IPersonAttributeDao>();
-        casProperties.getAuthn().getAttributeRepository().getJson().forEach(Unchecked.consumer(json -> {
-            val r = json.getLocation();
-            if (r != null) {
-                val dao = new JsonBackedComplexStubPersonAttributeDao(r);
-                dao.setOrder(json.getOrder());
-                dao.init();
-                LOGGER.debug("Configured JSON attribute sources from [{}]", r);
-                list.add(dao);
-            }
-        }));
-        return list;
+        return casProperties.getAuthn().getAttributeRepository().getJson().stream()
+                .filter(json -> json.getLocation() != null)
+                .map(CasPersonDirectoryConfiguration::jsonAttributeDao)
+                .collect(toList());
+    }
+
+    @SneakyThrows
+    private static IPersonAttributeDao jsonAttributeDao(final JsonPrincipalAttributesProperties json) {
+        val dao = new JsonBackedComplexStubPersonAttributeDao(json.getLocation());
+        dao.setOrder(json.getOrder());
+        dao.init();
+        LOGGER.debug("Configured JSON attribute sources from [{}]", json);
+        return dao;
     }
 
     @ConditionalOnMissingBean(name = "groovyAttributeRepositories")
     @Bean
     @RefreshScope
     public List<IPersonAttributeDao> groovyAttributeRepositories() {
-        val list = new ArrayList<IPersonAttributeDao>();
-        casProperties.getAuthn().getAttributeRepository().getGroovy().forEach(groovy -> {
-            if (groovy.getLocation() != null) {
-                val dao = new GroovyPersonAttributeDao(new InternalGroovyScriptDao(applicationContext, casProperties));
-                dao.setCaseInsensitiveUsername(groovy.isCaseInsensitive());
-                dao.setOrder(groovy.getOrder());
+        return casProperties.getAuthn().getAttributeRepository().getGroovy().stream()
+                .filter(groovy -> groovy.getLocation() != null)
+                .map(this::groovyAttributeDao)
+                .collect(toList());
+    }
 
-                LOGGER.debug("Configured Groovy attribute sources from [{}]", groovy.getLocation());
-                list.add(dao);
-            }
-        });
-        return list;
+    private IPersonAttributeDao groovyAttributeDao(final GroovyPrincipalAttributesProperties groovy) {
+        val dao = new GroovyPersonAttributeDao(new InternalGroovyScriptDao(applicationContext, casProperties));
+        dao.setCaseInsensitiveUsername(groovy.isCaseInsensitive());
+        dao.setOrder(groovy.getOrder());
+
+        LOGGER.debug("Configured Groovy attribute sources from [{}]", groovy.getLocation());
+        return dao;
     }
 
     @ConditionalOnMissingBean(name = "grouperAttributeRepositories")
@@ -142,15 +178,21 @@ public class CasPersonDirectoryConfiguration implements PersonDirectoryAttribute
     @RefreshScope
     public List<IPersonAttributeDao> grouperAttributeRepositories() {
         val list = new ArrayList<IPersonAttributeDao>();
-        val gp = casProperties.getAuthn().getAttributeRepository().getGrouper();
-
-        if (gp.isEnabled()) {
-            val dao = new GrouperPersonAttributeDao();
-            dao.setOrder(gp.getOrder());
-            LOGGER.debug("Configured Grouper attribute source");
-            list.add(dao);
+        val gp = grouperAttributeDao(casProperties.getAuthn().getAttributeRepository().getGrouper());
+        if (gp != null) {
+            list.add(gp);
         }
         return list;
+    }
+
+    private IPersonAttributeDao grouperAttributeDao(final GrouperPrincipalAttributesProperties grouper) {
+        if (grouper.isEnabled()) {
+            val dao = new GrouperPersonAttributeDao();
+            dao.setOrder(grouper.getOrder());
+            LOGGER.debug("Configured Grouper attribute source");
+            return dao;
+        }
+        return null;
     }
 
     @ConditionalOnMissingBean(name = "stubAttributeRepositories")
@@ -170,26 +212,26 @@ public class CasPersonDirectoryConfiguration implements PersonDirectoryAttribute
     @Bean
     @RefreshScope
     public List<IPersonAttributeDao> jdbcAttributeRepositories() {
-        val list = new ArrayList<IPersonAttributeDao>();
-        val attrs = casProperties.getAuthn().getAttributeRepository();
-        attrs.getJdbc().forEach(jdbc -> {
-            if (StringUtils.isNotBlank(jdbc.getSql()) && StringUtils.isNotBlank(jdbc.getUrl())) {
-                val jdbcDao = createJdbcPersonAttributeDao(jdbc);
-                jdbcDao.setQueryAttributeMapping(CollectionUtils.wrap("username", jdbc.getUsername()));
-                val mapping = jdbc.getAttributes();
-                if (mapping != null && !mapping.isEmpty()) {
-                    LOGGER.debug("Configured result attribute mapping for [{}] to be [{}]", jdbc.getUrl(), jdbc.getAttributes());
-                    jdbcDao.setResultAttributeMapping(mapping);
-                }
-                jdbcDao.setRequireAllQueryAttributes(jdbc.isRequireAllAttributes());
-                jdbcDao.setUsernameCaseCanonicalizationMode(jdbc.getCaseCanonicalization());
-                jdbcDao.setDefaultCaseCanonicalizationMode(jdbc.getCaseCanonicalization());
-                jdbcDao.setQueryType(jdbc.getQueryType());
-                jdbcDao.setOrder(jdbc.getOrder());
-                list.add(jdbcDao);
-            }
-        });
-        return list;
+        return casProperties.getAuthn().getAttributeRepository().getJdbc().stream()
+                .filter(jdbc -> StringUtils.isNotBlank(jdbc.getSql()) && StringUtils.isNotBlank(jdbc.getUrl()))
+                .map(CasPersonDirectoryConfiguration::jdbcAttributeDao)
+                .collect(toList());
+    }
+
+    private static IPersonAttributeDao jdbcAttributeDao(final JdbcPrincipalAttributesProperties jdbc) {
+        val jdbcDao = createJdbcPersonAttributeDao(jdbc);
+        jdbcDao.setQueryAttributeMapping(CollectionUtils.wrap("username", jdbc.getUsername()));
+        val mapping = jdbc.getAttributes();
+        if (mapping != null && !mapping.isEmpty()) {
+            LOGGER.debug("Configured result attribute mapping for [{}] to be [{}]", jdbc.getUrl(), jdbc.getAttributes());
+            jdbcDao.setResultAttributeMapping(mapping);
+        }
+        jdbcDao.setRequireAllQueryAttributes(jdbc.isRequireAllAttributes());
+        jdbcDao.setUsernameCaseCanonicalizationMode(jdbc.getCaseCanonicalization());
+        jdbcDao.setDefaultCaseCanonicalizationMode(jdbc.getCaseCanonicalization());
+        jdbcDao.setQueryType(jdbc.getQueryType());
+        jdbcDao.setOrder(jdbc.getOrder());
+        return jdbcDao;
     }
 
     private static AbstractJdbcPersonAttributeDao createJdbcPersonAttributeDao(final JdbcPrincipalAttributesProperties jdbc) {
@@ -214,97 +256,98 @@ public class CasPersonDirectoryConfiguration implements PersonDirectoryAttribute
     @Bean
     @RefreshScope
     public List<IPersonAttributeDao> ldapAttributeRepositories() {
-        val list = new ArrayList<IPersonAttributeDao>();
-        val attrs = casProperties.getAuthn().getAttributeRepository();
-        attrs.getLdap().forEach(ldap -> {
-            if (StringUtils.isNotBlank(ldap.getBaseDn()) && StringUtils.isNotBlank(ldap.getLdapUrl())) {
-                val ldapDao = new LdaptivePersonAttributeDao();
+        return casProperties.getAuthn().getAttributeRepository().getLdap().stream()
+                .filter(ldap -> StringUtils.isNotBlank(ldap.getBaseDn()) && StringUtils.isNotBlank(ldap.getLdapUrl()))
+                .map(CasPersonDirectoryConfiguration::ldapAttributeDao)
+                .collect(toList());
+    }
 
-                LOGGER.debug("Configured LDAP attribute source for [{}] and baseDn [{}]", ldap.getLdapUrl(), ldap.getBaseDn());
-                ldapDao.setConnectionFactory(LdapUtils.newLdaptivePooledConnectionFactory(ldap));
-                ldapDao.setBaseDN(ldap.getBaseDn());
+    private static IPersonAttributeDao ldapAttributeDao(final LdapPrincipalAttributesProperties ldap) {
+        val ldapDao = new LdaptivePersonAttributeDao();
 
-                LOGGER.debug("LDAP attributes are fetched from [{}] via filter [{}]", ldap.getLdapUrl(), ldap.getSearchFilter());
-                ldapDao.setSearchFilter(ldap.getSearchFilter());
+        LOGGER.debug("Configured LDAP attribute source for [{}] and baseDn [{}]", ldap.getLdapUrl(), ldap.getBaseDn());
+        ldapDao.setConnectionFactory(LdapUtils.newLdaptivePooledConnectionFactory(ldap));
+        ldapDao.setBaseDN(ldap.getBaseDn());
 
-                val constraints = new SearchControls();
-                if (ldap.getAttributes() != null && !ldap.getAttributes().isEmpty()) {
-                    LOGGER.debug("Configured result attribute mapping for [{}] to be [{}]", ldap.getLdapUrl(), ldap.getAttributes());
-                    ldapDao.setResultAttributeMapping(ldap.getAttributes());
-                    val attributes = ldap.getAttributes().keySet().toArray(ArrayUtils.EMPTY_STRING_ARRAY);
-                    constraints.setReturningAttributes(attributes);
-                } else {
-                    LOGGER.debug("Retrieving all attributes as no explicit attribute mappings are defined for [{}]", ldap.getLdapUrl());
-                    constraints.setReturningAttributes(null);
-                }
+        LOGGER.debug("LDAP attributes are fetched from [{}] via filter [{}]", ldap.getLdapUrl(), ldap.getSearchFilter());
+        ldapDao.setSearchFilter(ldap.getSearchFilter());
 
-                if (ldap.isSubtreeSearch()) {
-                    LOGGER.debug("Configured subtree searching for [{}]", ldap.getLdapUrl());
-                    constraints.setSearchScope(SearchControls.SUBTREE_SCOPE);
-                }
-                constraints.setDerefLinkFlag(true);
-                ldapDao.setSearchControls(constraints);
+        val constraints = new SearchControls();
+        if (ldap.getAttributes() != null && !ldap.getAttributes().isEmpty()) {
+            LOGGER.debug("Configured result attribute mapping for [{}] to be [{}]", ldap.getLdapUrl(), ldap.getAttributes());
+            ldapDao.setResultAttributeMapping(ldap.getAttributes());
+            val attributes = ldap.getAttributes().keySet().toArray(ArrayUtils.EMPTY_STRING_ARRAY);
+            constraints.setReturningAttributes(attributes);
+        } else {
+            LOGGER.debug("Retrieving all attributes as no explicit attribute mappings are defined for [{}]", ldap.getLdapUrl());
+            constraints.setReturningAttributes(null);
+        }
 
-                ldapDao.setOrder(ldap.getOrder());
+        if (ldap.isSubtreeSearch()) {
+            LOGGER.debug("Configured subtree searching for [{}]", ldap.getLdapUrl());
+            constraints.setSearchScope(SearchControls.SUBTREE_SCOPE);
+        }
+        constraints.setDerefLinkFlag(true);
+        ldapDao.setSearchControls(constraints);
 
-                LOGGER.debug("Initializing LDAP attribute source for [{}]", ldap.getLdapUrl());
-                ldapDao.initialize();
+        ldapDao.setOrder(ldap.getOrder());
 
-                list.add(ldapDao);
-            }
-        });
+        LOGGER.debug("Initializing LDAP attribute source for [{}]", ldap.getLdapUrl());
+        ldapDao.initialize();
 
-        return list;
+        return ldapDao;
     }
 
     @ConditionalOnMissingBean(name = "scriptedAttributeRepositories")
     @Bean
     @RefreshScope
     public List<IPersonAttributeDao> scriptedAttributeRepositories() {
-        val list = new ArrayList<IPersonAttributeDao>();
-        casProperties.getAuthn().getAttributeRepository().getScript()
-            .forEach(Unchecked.consumer(script -> {
-                val scriptContents = IOUtils.toString(script.getLocation().getInputStream(), StandardCharsets.UTF_8);
-                val engineName = script.getEngineName() == null
-                    ? ScriptEnginePersonAttributeDao.getScriptEngineName(script.getLocation().getFilename())
-                    : script.getEngineName();
-                val dao = new ScriptEnginePersonAttributeDao(scriptContents, engineName);
-                dao.setCaseInsensitiveUsername(script.isCaseInsensitive());
-                dao.setOrder(script.getOrder());
-                LOGGER.debug("Configured scripted attribute sources from [{}]", script.getLocation());
-                list.add(dao);
-            }));
-        return list;
+        return casProperties.getAuthn().getAttributeRepository().getScript().stream()
+                .filter(script -> script.getLocation() != null)
+                .map(CasPersonDirectoryConfiguration::scriptedAttributeDao)
+                .collect(toList());
+    }
+
+    @SneakyThrows
+    private static IPersonAttributeDao scriptedAttributeDao(final ScriptedPrincipalAttributesProperties script) {
+        val scriptContents = IOUtils.toString(script.getLocation().getInputStream(), StandardCharsets.UTF_8);
+        val engineName = script.getEngineName() == null
+                ? ScriptEnginePersonAttributeDao.getScriptEngineName(script.getLocation().getFilename())
+                : script.getEngineName();
+        val dao = new ScriptEnginePersonAttributeDao(scriptContents, engineName);
+        dao.setCaseInsensitiveUsername(script.isCaseInsensitive());
+        dao.setOrder(script.getOrder());
+        LOGGER.debug("Configured scripted attribute sources from [{}]", script.getLocation());
+        return dao;
     }
 
     @ConditionalOnMissingBean(name = "restfulAttributeRepositories")
     @Bean
     @RefreshScope
     public List<IPersonAttributeDao> restfulAttributeRepositories() {
-        val list = new ArrayList<IPersonAttributeDao>();
-        casProperties.getAuthn().getAttributeRepository().getRest().forEach(rest -> {
-            if (StringUtils.isNotBlank(rest.getUrl())) {
+        return casProperties.getAuthn().getAttributeRepository().getRest().stream()
+                .filter(rest -> StringUtils.isNotBlank(rest.getUrl()))
+                .map(CasPersonDirectoryConfiguration::restfulAttributeDao)
+                .collect(toList());
+    }
 
-                val dao = new RestfulPersonAttributeDao();
-                dao.setCaseInsensitiveUsername(rest.isCaseInsensitive());
-                dao.setOrder(rest.getOrder());
-                dao.setUrl(rest.getUrl());
-                dao.setMethod(HttpMethod.resolve(rest.getMethod()).name());
+    private static IPersonAttributeDao restfulAttributeDao(final RestPrincipalAttributesProperties rest) {
+        val dao = new RestfulPersonAttributeDao();
+        dao.setCaseInsensitiveUsername(rest.isCaseInsensitive());
+        dao.setOrder(rest.getOrder());
+        dao.setUrl(rest.getUrl());
+        dao.setMethod(HttpMethod.resolve(rest.getMethod()).name());
 
-                if (StringUtils.isNotBlank(rest.getBasicAuthPassword()) && StringUtils.isNotBlank(rest.getBasicAuthUsername())) {
-                    dao.setBasicAuthPassword(rest.getBasicAuthPassword());
-                    dao.setBasicAuthUsername(rest.getBasicAuthUsername());
-                    LOGGER.debug("Basic authentication credentials are located for REST endpoint [{}]", rest.getUrl());
-                } else {
-                    LOGGER.debug("Basic authentication credentials are not defined for REST endpoint [{}]", rest.getUrl());
-                }
+        if (StringUtils.isNotBlank(rest.getBasicAuthPassword()) && StringUtils.isNotBlank(rest.getBasicAuthUsername())) {
+            dao.setBasicAuthPassword(rest.getBasicAuthPassword());
+            dao.setBasicAuthUsername(rest.getBasicAuthUsername());
+            LOGGER.debug("Basic authentication credentials are located for REST endpoint [{}]", rest.getUrl());
+        } else {
+            LOGGER.debug("Basic authentication credentials are not defined for REST endpoint [{}]", rest.getUrl());
+        }
 
-                LOGGER.debug("Configured REST attribute sources from [{}]", rest.getUrl());
-                list.add(dao);
-            }
-        });
-
-        return list;
+        LOGGER.debug("Configured REST attribute sources from [{}]", rest.getUrl());
+        return dao;
     }
 
     @Bean

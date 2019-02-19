@@ -352,4 +352,10 @@ public class AuthenticationProperties implements Serializable {
      */
     @NestedConfigurationProperty
     private AuthenticationAttributeReleaseProperties authenticationAttributeRelease = new AuthenticationAttributeReleaseProperties();
+
+    /**
+     * Map of deferred attribute resolvers.
+     */
+    @NestedConfigurationProperty
+    private DeferredAttributeResolvers deferredAttributeResolvers = new DeferredAttributeResolvers();
 }

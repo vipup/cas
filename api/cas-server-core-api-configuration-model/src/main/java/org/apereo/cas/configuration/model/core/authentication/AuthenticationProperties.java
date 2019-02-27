@@ -357,5 +357,5 @@ public class AuthenticationProperties implements Serializable {
      * Map of deferred attribute resolvers.
      */
     @NestedConfigurationProperty
-    private DeferredAttributeResolvers deferredAttributeResolvers = new DeferredAttributeResolvers();
+    private ServiceAttributeResolvers serviceAttributeResolvers = new ServiceAttributeResolvers();
 }

@@ -25,6 +25,7 @@ import lombok.Setter;
 import lombok.Synchronized;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
+import org.apereo.services.persondir.IPersonAttributeDao;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ApplicationEventPublisherAware;
@@ -33,6 +34,7 @@ import org.springframework.util.StringUtils;
 
 import java.io.Serializable;
 import java.util.Collection;
+import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -102,6 +104,11 @@ public abstract class AbstractCentralAuthenticationService implements CentralAut
      * since the access strategy is not usually managed as a Spring bean.
      */
     protected final AuditableExecution registeredServiceAccessStrategyEnforcer;
+
+    /**
+     * Attribute Resolvers that are executed during the validation of a Service Ticket.
+     */
+    protected final Map<String, IPersonAttributeDao> serviceAttributeResolvers;
 
     /**
      * Publish CAS events.

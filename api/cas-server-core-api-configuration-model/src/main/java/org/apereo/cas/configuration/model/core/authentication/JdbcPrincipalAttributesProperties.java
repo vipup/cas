@@ -98,4 +98,9 @@ public class JdbcPrincipalAttributesProperties extends AbstractJpaProperties {
      * use for virtual renames.
      */
     private Map<String, String> attributes = new HashMap();
+
+    /**
+     * String id that identifies this resolver.
+     */
+    private String id;
 }

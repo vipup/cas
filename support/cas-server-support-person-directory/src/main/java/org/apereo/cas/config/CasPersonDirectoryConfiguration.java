@@ -1,6 +1,5 @@
 package org.apereo.cas.config;
 
-import lombok.SneakyThrows;
 import org.apereo.cas.authentication.CoreAuthenticationUtils;
 import org.apereo.cas.authentication.principal.resolvers.InternalGroovyScriptDao;
 import org.apereo.cas.configuration.CasConfigurationProperties;
@@ -19,8 +18,10 @@ import org.apereo.cas.util.CollectionUtils;
 import org.apereo.cas.util.LdapUtils;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
+
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.ObjectUtils;
@@ -37,7 +38,6 @@ import org.apereo.services.persondir.support.jdbc.AbstractJdbcPersonAttributeDao
 import org.apereo.services.persondir.support.jdbc.MultiRowJdbcPersonAttributeDao;
 import org.apereo.services.persondir.support.jdbc.SingleRowJdbcPersonAttributeDao;
 import org.apereo.services.persondir.support.ldap.LdaptivePersonAttributeDao;
-import org.jooq.lambda.Unchecked;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -48,7 +48,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.OrderComparator;
 import org.springframework.http.HttpMethod;
-import org.springframework.lang.NonNull;
 
 import javax.naming.directory.SearchControls;
 import java.nio.charset.StandardCharsets;
@@ -57,7 +56,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
@@ -114,24 +112,24 @@ public class CasPersonDirectoryConfiguration implements PersonDirectoryAttribute
         return cachingAttributeRepository();
     }
 
-    @ConditionalOnMissingBean(name = "deferredAttributeResolvers")
+    @ConditionalOnMissingBean(name = "serviceAttributeResolvers")
     @Bean
     @RefreshScope
-    public Map<String, IPersonAttributeDao> deferredAttributeResolvers() {
+    public Map<String, IPersonAttributeDao> serviceAttributeResolvers() {
         val map = new HashMap<String, IPersonAttributeDao>();
-        val resolvers = casProperties.getAuthn().getDeferredAttributeResolvers();
+        val resolvers = casProperties.getAuthn().getServiceAttributeResolvers();
         map.putAll(resolvers.getGroovy().stream()
                 .collect(toMap(e -> e.getId(), e -> groovyAttributeDao(e))));
-       // map.putAll(resolvers.getJdbc().stream()
-       //         .collect(toMap(e -> e.getgetKey(), e -> jdbcAttributeDao(e.getValue()))));
+        map.putAll(resolvers.getJdbc().stream()
+                .collect(toMap(e -> e.getId(), e -> jdbcAttributeDao(e))));
         map.putAll(resolvers.getLdap().stream()
                 .collect(toMap(e -> e.getId(), e -> ldapAttributeDao(e))));
-        //map.putAll(resolvers.getRest().entrySet().stream()
-        //        .collect(toMap(e -> e.getKey(), e -> restfulAttributeDao(e.getValue()))));
-        //map.putAll(resolvers.getScript().entrySet().stream()
-        //        .collect(toMap(e -> e.getKey(), e -> scriptedAttributeDao(e.getValue()))));
-        //map.putAll(resolvers.getJson().entrySet().stream()
-        //        .collect(toMap(e -> e.getKey(), e -> jsonAttributeDao(e.getValue()))));
+        map.putAll(resolvers.getRest().stream()
+                .collect(toMap(e -> e.getId(), e -> restfulAttributeDao(e))));
+        map.putAll(resolvers.getScript().stream()
+                .collect(toMap(e -> e.getId(), e -> scriptedAttributeDao(e))));
+        map.putAll(resolvers.getJson().stream()
+                .collect(toMap(e -> e.getId(), e -> jsonAttributeDao(e))));
         return map;
     }
 

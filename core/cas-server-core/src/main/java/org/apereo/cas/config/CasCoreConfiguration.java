@@ -21,6 +21,7 @@ import org.apereo.cas.ticket.registry.TicketRegistry;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.commons.lang3.RegExUtils;
+import org.apereo.services.persondir.IPersonAttributeDao;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -32,6 +33,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * This is {@link CasCoreConfiguration}.
@@ -79,6 +81,10 @@ public class CasCoreConfiguration {
     @Qualifier("protocolTicketCipherExecutor")
     private ObjectProvider<CipherExecutor> cipherExecutor;
 
+    @Autowired
+    @Qualifier("serviceAttributeResolvers")
+    private ObjectProvider<Map<String, IPersonAttributeDao>> serviceAttributeResolvers;
+
     @Bean
     @ConditionalOnMissingBean(name = "authenticationPolicyFactory")
     public ContextualAuthenticationPolicyFactory<ServiceContext> authenticationPolicyFactory() {
@@ -117,6 +123,7 @@ public class CasCoreConfiguration {
             authenticationPolicyFactory(),
             principalFactory.getIfAvailable(),
             cipherExecutor.getIfAvailable(),
-            registeredServiceAccessStrategyEnforcer.getIfAvailable());
+            registeredServiceAccessStrategyEnforcer.getIfAvailable(),
+            serviceAttributeResolvers.getIfAvailable());
     }
 }

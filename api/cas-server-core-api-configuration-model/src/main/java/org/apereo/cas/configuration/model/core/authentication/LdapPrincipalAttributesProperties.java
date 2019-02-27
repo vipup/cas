@@ -39,5 +39,8 @@ public class LdapPrincipalAttributesProperties extends AbstractLdapSearchPropert
      */
     private Map<String, String> attributes = new HashMap();
 
+    /**
+     * String id that can be used to identify this resolver.
+     */
     private String id;
 }

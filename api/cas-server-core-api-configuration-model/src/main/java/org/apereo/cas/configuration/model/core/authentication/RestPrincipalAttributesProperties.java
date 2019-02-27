@@ -31,4 +31,9 @@ public class RestPrincipalAttributesProperties extends RestEndpointProperties {
      * attribute names in a case-insensitive manner.
      */
     private boolean caseInsensitive;
+
+    /**
+     * String id that identifies this resolver.
+     */
+    private String id;
 }

@@ -146,6 +146,10 @@ public abstract class AbstractRegisteredService implements RegisteredService {
     @OrderColumn
     private List<DefaultRegisteredServiceContact> contacts = new ArrayList<>();
 
+    @Lob
+    @Column(name = "serviceResolvers", length = Integer.MAX_VALUE)
+    private HashSet<String> serviceAttributeResolvers = new HashSet<>();
+
     @Override
     public void initialize() {
         this.proxyPolicy = ObjectUtils.defaultIfNull(this.proxyPolicy, new RefuseRegisteredServiceProxyPolicy());

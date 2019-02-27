@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 import java.io.Serializable;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -266,5 +267,15 @@ public interface RegisteredService extends Serializable, Comparable<RegisteredSe
      * values or object instances, etc.
      */
     default void initialize() {
+    }
+
+    /**
+     * Returns a list of ids of Service Attribute Resolvers that will be called when a user authenticates
+     * against this service.
+     *
+     * @return Set of resolver ids
+     */
+    default HashSet<String> getServiceAttributeResolvers() {
+        return new HashSet();
     }
 }

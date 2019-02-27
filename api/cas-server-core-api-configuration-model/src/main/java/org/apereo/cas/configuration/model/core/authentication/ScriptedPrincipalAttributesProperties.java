@@ -40,4 +40,9 @@ public class ScriptedPrincipalAttributesProperties extends SpringResourcePropert
      * merging strategies.
      */
     private int order;
+
+    /**
+     * String id that identifies this resolver.
+     */
+    private String id;
 }

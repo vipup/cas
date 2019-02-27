@@ -47,12 +47,14 @@ import org.apereo.cas.validation.DefaultAssertionBuilder;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apereo.inspektr.audit.annotation.Audit;
+import org.apereo.services.persondir.IPersonAttributeDao;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Concrete implementation of a {@link CentralAuthenticationService}, and also the
@@ -79,10 +81,11 @@ public class DefaultCentralAuthenticationService extends AbstractCentralAuthenti
                                                final ContextualAuthenticationPolicyFactory<ServiceContext> serviceContextAuthenticationPolicyFactory,
                                                final PrincipalFactory principalFactory,
                                                final CipherExecutor<String, String> cipherExecutor,
-                                               final AuditableExecution registeredServiceAccessStrategyEnforcer) {
+                                               final AuditableExecution registeredServiceAccessStrategyEnforcer,
+                                               final Map<String, IPersonAttributeDao> serviceAttributeResolvers) {
         super(applicationEventPublisher, ticketRegistry, servicesManager, logoutManager, ticketFactory,
             authenticationRequestServiceSelectionStrategies, serviceContextAuthenticationPolicyFactory,
-            principalFactory, cipherExecutor, registeredServiceAccessStrategyEnforcer);
+            principalFactory, cipherExecutor, registeredServiceAccessStrategyEnforcer, serviceAttributeResolvers);
     }
 
     @Audit(
@@ -277,6 +280,12 @@ public class DefaultCentralAuthenticationService extends AbstractCentralAuthenti
             val authentication = getAuthenticationSatisfiedByPolicy(root.getAuthentication(),
                 new ServiceContext(selectedService, registeredService));
             val principal = authentication.getPrincipal();
+
+            registeredService.getServiceAttributeResolvers().stream()
+                    .map(id -> serviceAttributeResolvers.get(id))
+                    .forEach(resolver -> {
+                        principal.getAttributes().putAll(resolver.getPerson(principal.getId()).getAttributes());
+                    });
 
             val attributePolicy = registeredService.getAttributeReleasePolicy();
             LOGGER.debug("Attribute policy [{}] is associated with service [{}]", attributePolicy, registeredService);

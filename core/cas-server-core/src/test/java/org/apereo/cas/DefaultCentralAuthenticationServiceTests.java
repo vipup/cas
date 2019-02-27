@@ -422,7 +422,7 @@ public class DefaultCentralAuthenticationServiceTests extends AbstractCentralAut
             mock(ApplicationEventPublisher.class), registry, null, logoutManager,
             null, null,
             null, null, null,
-            mock(AuditableExecution.class));
+            mock(AuditableExecution.class), null);
         cas.destroyTicketGrantingTicket(tgt.getId());
     }
 }

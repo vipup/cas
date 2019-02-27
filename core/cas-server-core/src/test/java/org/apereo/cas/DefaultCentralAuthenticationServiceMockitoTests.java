@@ -182,7 +182,7 @@ public class DefaultCentralAuthenticationServiceMockitoTests extends BaseCasCore
             new AcceptAnyAuthenticationPolicyFactory(),
             new DefaultPrincipalFactory(),
             CipherExecutor.noOpOfStringToString(),
-            enforcer);
+            enforcer, null);
         this.cas.setApplicationEventPublisher(mock(ApplicationEventPublisher.class));
     }
 
